@@ -1,0 +1,77 @@
+# 基本設定
+datadir="/var/lib/proxysql"
+logfile="/var/log/proxysql.log"
+pidfile="/var/run/proxysql/proxysql.pid"
+admin_variables= {
+    admin_credentials="admin:adminadmin"
+    mysql_ifaces="0.0.0.0:6032"
+    refresh_interval=2000
+    web_enabled=true
+    web_port=6080
+    web_user=admin
+    web_passwd=admin
+}
+
+# MySQL 伺服器組配置
+mysql_servers = (
+    {
+		address="mysql_server1_ip",
+		port=3306,
+		hostgroup=10,
+		max_connections=100
+	},
+    {
+		address="mysql_server2_ip",
+		port=3306,
+		hostgroup=10,
+		max_connections=100
+	},
+)
+
+# MySQL 伺服器組配置
+mysql_groups = (
+    {
+		writer_hostgroup=10,
+		backup_hostgroup=20,
+		reader_hostgroup=30,
+		offline_hostgroup=9999,
+		max_writers=1,
+		writer_is_also_reader=1
+	},
+)
+
+# 監聽端口配置
+mysql_variables = (
+    {
+		variable_name="admin_variables.admin_credentials",
+		variable_value="admin:adminadmin"
+	},
+)
+
+# 查詢攔截和重寫配置
+mysql_query_rules = (
+    {
+		rule_id=1,
+		match_digest="^SELECT.*FOR UPDATE$",
+		destination_hostgroup=20,
+		apply=1
+	},
+)
+
+# 默認連接池配置
+mysql_servers = (
+    {
+		hostgroup_id=10,
+		hostname="mysql_server1_ip",
+		port=3306,
+		max_connections=100,
+		weight=100
+		},
+    {
+		hostgroup_id=20,
+		hostname="mysql_server2_ip",
+		port=3306,
+		max_connections=100,
+		weight=100
+	},
+)

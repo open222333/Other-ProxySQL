@@ -1,6 +1,13 @@
-version: "3"
+version: '3'
 services:
-  sample:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.test
+  proxysql:
+    image: proxysql/proxysql:2.0.17
+    container_name: proxysql
+    volumes:
+      - ./conf/proxysql.cnf:/etc/proxysql.cnf
+    ports:
+      - "6032:6032"
+      - "6033:6033"
+    environment:
+      - MYSQL_ROOT_PASSWORD=adminadmin
+    restart: always
