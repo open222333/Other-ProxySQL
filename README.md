@@ -18,7 +18,86 @@
 
 # 配置文檔
 
-```
+```ini
+# 基本設定
+datadir="/var/lib/proxysql"  # ProxySQL 數據目錄
+logfile="/var/log/proxysql.log"  # ProxySQL 日誌文件
+pidfile="/var/run/proxysql/proxysql.pid"  # ProxySQL PID 文件
+admin_variables= {
+    admin_credentials="admin:adminadmin"  # 管理員憑據
+    mysql_ifaces="0.0.0.0:6032"  # MySQL 接口地址和端口
+    refresh_interval=2000  # 管理器刷新間隔（毫秒）
+    web_enabled=true  # 啟用 Web 界面
+    web_port=6080  # Web 界面端口
+    web_user=admin  # Web 界面用戶名
+    web_passwd=admin  # Web 界面密碼
+}
+
+# MySQL 伺服器組配置
+mysql_servers = (
+    {
+        address="mysql_server1_ip",  # MySQL 伺服器1的 IP 地址
+        port=3306,  # MySQL 伺服器1的端口
+        hostgroup=10,  # MySQL 伺服器1所屬的 Hostgroup
+        max_connections=100  # 最大連接數
+    },
+    {
+        address="mysql_server2_ip",  # MySQL 伺服器2的 IP 地址
+        port=3306,  # MySQL 伺服器2的端口
+        hostgroup=10,  # MySQL 伺服器2所屬的 Hostgroup
+        max_connections=100  # 最大連接數
+    },
+)
+
+# MySQL 伺服器組配置
+mysql_groups = (
+    {
+        writer_hostgroup=10,  # 寫入操作的 Hostgroup
+        backup_hostgroup=20,  # 備份操作的 Hostgroup
+        reader_hostgroup=30,  # 讀取操作的 Hostgroup
+        offline_hostgroup=9999,  # 下線操作的 Hostgroup
+        max_writers=1,  # 最大寫入數
+        writer_is_also_reader=1  # 寫入操作是否同時是讀取操作
+    },
+)
+
+# 監聽端口配置
+mysql_variables = (
+    {
+        variable_name="admin_variables.admin_credentials",  # 參數名稱
+        variable_value="admin:adminadmin"  # 參數值
+    },
+)
+
+# 查詢攔截和重寫配置
+; 這個查詢規則的作用是，當有 SQL 查詢匹配正則表達式 ^SELECT.*FOR UPDATE$ 時，將該查詢發送到 Hostgroup 20。
+; 這可能用於特定類型的查詢進行路由或處理。
+mysql_query_rules = (
+    {
+        rule_id=1,  # 規則 ID
+        match_digest="^SELECT.*FOR UPDATE$",  # 匹配的 SQL 語句
+        destination_hostgroup=20,  # 目標 Hostgroup
+        apply=1  # 是否應用此規則
+    },
+)
+
+# 默認連接池配置
+mysql_servers = (
+    {
+        hostgroup_id=10,  # 默認 Hostgroup ID
+        hostname="mysql_server1_ip",  # 默認連接的 MySQL 伺服器 IP 地址
+        port=3306,  # 默認連接的 MySQL 伺服器端口
+        max_connections=100,  # 最大連接數
+        weight=100  # 默認權重
+    },
+    {
+        hostgroup_id=20,  # 默認 Hostgroup ID
+        hostname="mysql_server2_ip",  # 默認連接的 MySQL 伺服器 IP 地址
+        port=3306,  # 默認連接的 MySQL 伺服器端口
+        max_connections=100,  # 最大連接數
+        weight=100  # 默認權重
+    },
+)
 ```
 
 # 用法
