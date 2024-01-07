@@ -8,6 +8,7 @@ services:
     ports:
       - "6032:6032"
       - "6033:6033"
+      - "6080:6080"
     environment:
       - MYSQL_ROOT_PASSWORD=adminadmin
     restart: always
