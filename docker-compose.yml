@@ -14,28 +14,8 @@ services:
     restart: always
     networks:
       - mysql_network
-  phpmyadmin_proxysql:
-    container_name: phpmyadmin_proxysql
-    hostname: phpmyadmin-container
-    image: phpmyadmin/phpmyadmin
-    volumes:
-      - ./conf/phpmyadmin_proxysql/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php
-      - ./data/phpmyadmin_proxysql/:/srv/phpmyadmin/
-    ports:
-      - 80:80
-    environment:
-      PMA_HOST: proxysql
-      PMA_PORT: 6032
-      PMA_USER: admin
-      PMA_PASSWORD: adminadmin
-      MYSQL_ROOT_PASSWORD: adminadmin
-      UPLOAD_LIMIT: "100M"
-    depends_on:
-      - proxysql
-    networks:
-      - mysql_network
 
 networks:
-  default:
+  mysql_network:
     external:
       name: mysql_network
