@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 services:
   proxysql:
     image: proxysql/proxysql:2.0.17
@@ -12,6 +12,8 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=adminadmin
     restart: always
+    networks:
+      - mysql_network
   phpmyadmin_proxysql:
     container_name: phpmyadmin_proxysql
     hostname: phpmyadmin-container
@@ -30,3 +32,10 @@ services:
       UPLOAD_LIMIT: "100M"
     depends_on:
       - proxysql
+    networks:
+      - mysql_network
+
+networks:
+  default:
+    external:
+      name: mysql_network
