@@ -1,0 +1,2 @@
+FROM proxysql/proxysql:2.5.5-centos
+RUN yum install -y sqlite

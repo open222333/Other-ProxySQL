@@ -1,7 +1,10 @@
 version: "3"
 services:
   proxysql:
-    image: proxysql/proxysql:2.5.5-centos
+    build:
+        context: ./docker
+        dockerfile: Dockerfile.sqlite
+    image: proxysql_sqlite
     container_name: proxysql
     hostname: proxysql
     volumes:
