@@ -1,7 +1,7 @@
 version: "3"
 services:
   proxysql:
-    image: proxysql/proxysql:2.0.17
+    image: proxysql/proxysql:2.5.5-centos
     container_name: proxysql
     volumes:
       - ./conf/proxysql.cnf:/etc/proxysql.cnf

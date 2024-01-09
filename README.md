@@ -7,8 +7,8 @@
 ## 目錄
 
 - [Other-RepoTemplate](#other-repotemplate)
-	- [目錄](#目錄)
-	- [參考資料](#參考資料)
+  - [目錄](#目錄)
+  - [參考資料](#參考資料)
 - [配置文檔](#配置文檔)
 - [用法](#用法)
 
@@ -34,18 +34,21 @@ admin_variables= {
 }
 
 # MySQL 伺服器組配置
+# 默認連接池配置
 mysql_servers = (
     {
-        address="mysql_server1_ip",  # MySQL 伺服器1的 IP 地址
-        port=3306,  # MySQL 伺服器1的端口
-        hostgroup=10,  # MySQL 伺服器1所屬的 Hostgroup
-        max_connections=100  # 最大連接數
+        hostgroup_id=10,  # 默認 Hostgroup ID
+        hostname="mysql_server1_ip",  # 默認連接的 MySQL 伺服器 IP 地址
+        port=3306,  # 默認連接的 MySQL 伺服器端口
+        max_connections=100,  # 最大連接數
+        weight=100  # 默認權重
     },
     {
-        address="mysql_server2_ip",  # MySQL 伺服器2的 IP 地址
-        port=3306,  # MySQL 伺服器2的端口
-        hostgroup=10,  # MySQL 伺服器2所屬的 Hostgroup
-        max_connections=100  # 最大連接數
+        hostgroup_id=20,  # 默認 Hostgroup ID
+        hostname="mysql_server2_ip",  # 默認連接的 MySQL 伺服器 IP 地址
+        port=3306,  # 默認連接的 MySQL 伺服器端口
+        max_connections=100,  # 最大連接數
+        weight=100  # 默認權重
     },
 )
 
@@ -78,24 +81,6 @@ mysql_query_rules = (
         match_digest="^SELECT.*FOR UPDATE$",  # 匹配的 SQL 語句
         destination_hostgroup=20,  # 目標 Hostgroup
         apply=1  # 是否應用此規則
-    },
-)
-
-# 默認連接池配置
-mysql_servers = (
-    {
-        hostgroup_id=10,  # 默認 Hostgroup ID
-        hostname="mysql_server1_ip",  # 默認連接的 MySQL 伺服器 IP 地址
-        port=3306,  # 默認連接的 MySQL 伺服器端口
-        max_connections=100,  # 最大連接數
-        weight=100  # 默認權重
-    },
-    {
-        hostgroup_id=20,  # 默認 Hostgroup ID
-        hostname="mysql_server2_ip",  # 默認連接的 MySQL 伺服器 IP 地址
-        port=3306,  # 默認連接的 MySQL 伺服器端口
-        max_connections=100,  # 最大連接數
-        weight=100  # 默認權重
     },
 )
 ```
