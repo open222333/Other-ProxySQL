@@ -1,4 +1,4 @@
-# Other-RepoTemplate
+# Other-ProxySQL
 
 ```
 我的專案樣本
@@ -6,7 +6,7 @@
 
 ## 目錄
 
-- [Other-RepoTemplate](#other-repotemplate)
+- [Other-ProxySQL](#other-proxysql)
   - [目錄](#目錄)
   - [參考資料](#參考資料)
 - [配置文檔](#配置文檔)
@@ -128,5 +128,7 @@ mysql_query_rules = (
 
 # 用法
 
-```
+```bash
+# admin 只能從本機
+mysql -uradmin -p -h127.0.0.1 -P6032
 ```
