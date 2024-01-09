@@ -3,8 +3,10 @@ services:
   proxysql:
     image: proxysql/proxysql:2.5.5-centos
     container_name: proxysql
+    hostname: proxysql
     volumes:
       - ./conf/proxysql.cnf:/etc/proxysql.cnf
+      - ./data/proxysql:/var/lib/proxysql
     ports:
       - "6032:6032"
       - "6033:6033"
