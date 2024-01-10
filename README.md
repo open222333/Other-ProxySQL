@@ -7,8 +7,8 @@
 ## 目錄
 
 - [Other-ProxySQL](#other-proxysql)
-  - [目錄](#目錄)
-  - [參考資料](#參考資料)
+	- [目錄](#目錄)
+	- [參考資料](#參考資料)
 - [配置文檔](#配置文檔)
 - [用法](#用法)
 
@@ -130,5 +130,89 @@ mysql_query_rules = (
 
 ```bash
 # admin 只能從本機
-mysql -uradmin -p -h127.0.0.1 -P6032
+mysql -h127.0.0.1 -P6032 -uradmin -p
+```
+
+`使用 insert into 語句來動態配置`
+
+```sql
+INSERT INTO mysql_servers(hostgroup_id,hostname,port,weight,comment)
+VALUES(1,'db1','3306',1,'Write Group');
+INSERT intomysql_servers(hostgroup_id,hostname,port,weight,comment)
+VALUES(2,'db2','3307',1,'Read Group');
+```
+
+`查看 設定的 mysql servers`
+
+```sql
+SELECT * FROM mysql_servers;
+```
+
+`查看 設定的 mysql users`
+
+```sql
+SELECT * FROM mysql_users;
+```
+
+`在 mysql 上新增監控的用戶`
+
+```sql
+GRANT SELECT ON *.* TO 'monitor'@'192.168.22.%' IDENTIFIED BY 'monitor';
+FLUSH PRIVILEGES;
+```
+
+`在proxysql主機端設定監控用戶`
+
+```sql
+SET mysql-monitor_username='monitor';
+SET mysql-monitor_password='monitor';
+```
+
+`配置 proxysql 的轉送規則`
+
+```sql
+INSERT INTO mysql_query_rules(rule_id,active,match_digest,destination_hostgroup,apply)
+VALUES(1,1,'^SELECT.*FOR UPDATE$',1,1);
+INSERT INTO mysql_query_rules(rule_id,active,match_digest,destination_hostgroup,apply)
+VALUES(2,1,'^SELECT',2,1);
+```
+
+```sql
+SELECT rule_id,active,match_digest,destination_hostgroup,apply
+FROM mysql_query_rules;
+```
+
+```
++---------+--------+----------------------+-----------------------+-------+
+| rule_id | active | match_digest         | destination_hostgroup | apply |
++---------+--------+----------------------+-----------------------+-------+
+| 1       | 1      | ^SELECT.*FOR UPDATE$ | 1                     | 1     |
+| 2       | 1      | ^SELECT              | 2                     | 1     |
++---------+--------+----------------------+-----------------------+-------+
+
+設定查詢select的請求轉送到hostgroup_id=2群組上（讀群組）
+針對 select * from table_name  for update 這樣的修改語句，我們是需要將請求轉到寫群組，也就是hostgroup_id=1#對於其它沒有被規則匹配的請求全部轉送到預設的群組（mysql_users表中default_hostgroup）
+```
+
+`更新配置到RUNTIME中`
+
+```sql
+LOAD mysql users TO runtime;
+LOAD mysql servers TO runtime;
+LOAD mysql query rules TO runtime;
+LOAD mysql variables TO runtime;
+LOAD admin variables TO runtime;
+```
+
+`將所有配置儲存至磁碟上`
+
+所有設定資料都保存到磁碟上，永久寫入/var/lib/proxysql/proxysql.db這個檔案中
+
+```sql
+SAVE mysql users TO disk;
+SAVE mysql servers TO disk;
+SAVE mysql query rules TO disk;
+SAVE mysql variables TO disk;
+SAVE admin variables TO disk;
+LOAD mysql users TO runtime;
 ```
