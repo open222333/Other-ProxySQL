@@ -20,6 +20,13 @@ services:
     restart: always
     networks:
       - mysql_network
+  sqlite-web:
+    image: coleifer/sqlite-web
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/proxysql:/data
+    command: ["proxysql.db"]
 
 networks:
   mysql_network:
