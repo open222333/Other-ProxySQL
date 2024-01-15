@@ -21,12 +21,15 @@ services:
     networks:
       - mysql_network
   sqlite-web:
+    # https://github.com/coleifer/sqlite-web
     image: coleifer/sqlite-web
+    container_name: sqlite-web
+    hostname: sqlite-web
     ports:
       - "8080:8080"
     volumes:
       - ./data/proxysql:/data
-    command: ["proxysql.db"]
+    command: ["sqlite_web", "/data/proxysql.db"]
 
 networks:
   mysql_network:
