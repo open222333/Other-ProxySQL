@@ -29,7 +29,7 @@ services:
       - "8080:8080"
     volumes:
       - ./data/proxysql:/data
-    command: ["sqlite_web", "/data/proxysql.db"]
+    command: ["sqlite_web", "/data/proxysql.db", "--host", "0.0.0.0"]
 
 networks:
   mysql_network:
