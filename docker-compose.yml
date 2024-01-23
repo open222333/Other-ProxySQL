@@ -10,6 +10,7 @@ services:
     volumes:
       - ./conf/proxysql.cnf:/etc/proxysql.cnf
       - ./data/proxysql:/var/lib/proxysql
+      - ./script/gr_sw_mode_checker.sh:/var/lib/proxysql/gr_sw_mode_checker.sh
       - ./data/mysql:/var/lib/mysql
     ports:
       - "6032:6032"
