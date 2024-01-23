@@ -1,0 +1,3 @@
+[submodule "mysql_replication"]
+	path = mysql_replication
+	url = https://github.com/open222333/Other-MySQLReplication.git
