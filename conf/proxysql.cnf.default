@@ -44,7 +44,7 @@ mysql_servers = (
 		port=3306
 		max_connections=100
 		weight=100
-	}
+	},
 	{
 		hostgroup_id=20
 		hostname="mysql_server2_ip"
