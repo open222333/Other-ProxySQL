@@ -11,6 +11,8 @@
   - [參考資料](#參考資料)
     - [教學相關](#教學相關)
     - [腳本相關](#腳本相關)
+- [常用查詢](#常用查詢)
+  - [查看監控](#查看監控)
 
 ## 參考資料
 
@@ -27,3 +29,90 @@
 [ZzzCrazyPig/proxysql_groupreplication_checker - 設定proxysql故障轉移 腳本](https://github.com/ZzzCrazyPig/proxysql_groupreplication_checker)
 
 [ZzzCrazyPig/proxysql_groupreplication_checker - 設定proxysql故障轉移 腳本說明](https://github.com/ZzzCrazyPig/proxysql_groupreplication_checker/blob/master/README_Chinese.md)
+
+# 常用查詢
+
+`查看 ProxySQL 分組`
+
+```sql
+SELECT * FROM mysql_replication_hostgroups;
+```
+
+`查看 設定的 mysql servers`
+
+```sql
+SELECT * FROM mysql_servers;
+```
+
+`查看 設定的 mysql users`
+
+```sql
+SELECT * FROM mysql_users;
+```
+
+`統計各種SQL類型的執行次數與時間`
+
+```sql
+SELECT * FROM stats_mysql_commands_counters;
+```
+
+`查看連接後端MySQL的連接池信息`
+
+```sql
+SELECT * FROM stats_mysql_connection_pool;
+```
+
+`查看路由規則表`
+
+```sql
+SELECT rule_id,active,match_pattern,destination_hostgroup,apply
+FROM mysql_query_rules;
+```
+
+`與MySQL相關的代理程式級別的全域統計`
+
+```sql
+SELECT * FROM stats_mysql_global;
+```
+
+`統計路由命中次數`
+
+```sql
+SELECT * FROM stats_mysql_processlist;
+```
+
+`儲存monitor模組收集的信息，主要是對後端db的健康/延遲檢查`
+
+`查看monitor資料庫中的表`
+
+```sql
+SHOW tables FROM monitor;
+```
+
+`查看請求路由資訊`
+
+```sql
+SELECT hostgroup,schemaname,username,digest_text,count_star FROM stats_mysql_query_digest;
+```
+
+## 查看監控
+
+`檢查連接到MySQL的日誌`
+
+```sql
+SELECT * FROM monitor.mysql_server_ping_log
+ORDER BY time_start_us
+DESC LIMIT 6;
+```
+
+```sql
+SELECT * FROM monitor.mysql_server_connect_log
+ORDER BY time_start_us
+DESC LIMIT 6;
+```
+
+`查看read_only的日誌監控`
+
+```sql
+SELECT * FROM mysql_server_read_only_log LIMIT 10;
+```
