@@ -11,8 +11,6 @@ services:
       - ./conf/proxysql.cnf:/etc/proxysql.cnf
       - ./data/proxysql:/var/lib/proxysql
       - ./data/mysql:/var/lib/mysql
-      - ./script/gr_sw_mode_checker.sh:/var/lib/proxysql/gr_sw_mode_checker.sh
-      - ./logs/gr_sw_mode_checker.log:/var/lib/proxysql/gr_sw_mode_checker.log
     ports:
       - "6032:6032"
       - "6033:6033"
