@@ -11,6 +11,8 @@ services:
       - ./conf/proxysql.cnf:/etc/proxysql.cnf
       - ./data/proxysql:/var/lib/proxysql
       - ./data/mysql:/var/lib/mysql
+      - ./script:/script/proxysql
+      - ./logs:/logs/proxysql
     ports:
       - "6032:6032"
       - "6033:6033"
