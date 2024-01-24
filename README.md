@@ -13,6 +13,11 @@
     - [腳本相關](#腳本相關)
 - [常用查詢](#常用查詢)
   - [查看監控](#查看監控)
+- [測試意外宕機，故障轉移 (MGR)](#測試意外宕機故障轉移-mgr)
+  - [恢復](#恢復)
+    - [保持資料完整](#保持資料完整)
+    - [啟動組](#啟動組)
+    - [查看 各表格是否自動恢復](#查看-各表格是否自動恢復)
 
 ## 參考資料
 
@@ -115,4 +120,121 @@ DESC LIMIT 6;
 
 ```sql
 SELECT * FROM mysql_server_read_only_log LIMIT 10;
+```
+
+# 測試意外宕機，故障轉移 (MGR)
+
+`在 mysql 中查看目前group群組情況`
+
+```sql
+SELECT
+    MEMBER_ID,
+    MEMBER_HOST,
+    MEMBER_PORT,
+    MEMBER_STATE,
+    IF(global_status.VARIABLE_NAME IS NOT NULL,
+        'PRIMARY',
+        'SECONDARY') AS MEMBER_ROLE
+FROM
+    performance_schema.replication_group_members
+        LEFT JOIN
+    performance_schema.global_status ON global_status.VARIABLE_NAME = 'group_replication_primary_member'
+        AND global_status.VARIABLE_VALUE = replication_group_members.MEMBER_ID;
+```
+
+`查看 sql 請求路由訊息`
+
+```sql
+SELECT hostgroup,schemaname,username,digest_text,count_star
+FROM stats_mysql_query_digest;
+```
+
+## 恢復
+
+### 保持資料完整
+
+如果其他節點不斷有資料寫入
+
+因為之前宕機的是主(Master)
+
+再重新加入群組要以 slave 的身份
+
+reset master 以 slave 身份仍然不能正常加入
+
+匯出一份完整數據(帶gtid的) 匯入當機的 mysql 後 直接啟動組
+
+```bash
+mysqldump -uroot -p --all-databases --triggers --routines --events --skip-lock-tables > all.sql
+```
+
+### 啟動組
+
+注意這個允許本地不想交的指令必須執行
+
+否則proxysql之前的查詢主從節點健康的視圖你會無法使用
+
+自然proxysql就無法辨識已經恢復正常
+
+```sql
+-- 群組複製允許本地不相交
+SET global group_replication_allow_local_disjoint_gtids_join=ON;
+SET SESSION binlog_format = 'ROW';
+SET GLOBAL binlog_format = 'ROW';
+START GROUP_REPLICATION;
+```
+
+`查看 MGR 組狀態`
+
+```sql
+SELECT
+    MEMBER_ID,
+    MEMBER_HOST,
+    MEMBER_PORT,
+    MEMBER_STATE,
+    IF(global_status.VARIABLE_NAME IS NOT NULL,
+        'PRIMARY',
+        'SECONDARY') AS MEMBER_ROLE
+FROM
+    performance_schema.replication_group_members
+        LEFT JOIN
+    performance_schema.global_status ON global_status.VARIABLE_NAME = 'group_replication_primary_member'
+        AND global_status.VARIABLE_VALUE = replication_group_members.MEMBER_ID;
+```
+
+### 查看 各表格是否自動恢復
+
+`sys.gr_member_routing_candidate_status` 表是MySQL Group Replication 中的一個系統表，用於提供有關Group Replication 成員（節點）的資訊。
+
+以下是對該資料表的查詢以及欄位的說明：
+
+```sql
+SELECT * FROM sys.gr_member_routing_candidate_status;
+```
+
+此查詢傳回有關Group Replication 成員的目前狀態和路由候選狀態的資訊。
+
+`sys.gr_member_routing_candidate_status` 表的主要欄位說明：
+
+- **MEMBER_ID：** Group Replication 成員的識別碼。
+
+- **MEMBER_HOST：** 成員的主機名稱或IP 位址。
+
+- **MEMBER_PORT：** 成員的連接埠號碼。
+
+- **MEMBER_STATE：** 成員的目前狀態，例如'ONLINE' 表示在線。
+
+- **MEMBER_ROLE：** 成員的角色，例如'PRIMARY' 表示主節點。
+
+- **ROUTING_SUPPORT：** 成員是否支援路由功能，如果支持，值為'YES'。
+
+- **ROUTING_CANDIDATE_STATUS：** 成員在路由中的候選狀態，例如'ACTIVE' 表示是活躍的候選者。
+
+這個表的查詢結果將顯示Group Replication 成員的詳細信息，包括其當前狀態和是否支援路由功能。
+候選狀態可以用於了解成員是否可以用作路由目標。
+請注意，使用這個表的查詢需要確保使用者俱有執行相關查詢的權限，而MySQL 版本必須支援`sys` schema 和Group Replication。
+
+`查看 proxysql 節點是否恢復`
+
+```sql
+SELECT * FROM mysql_servers;
 ```
