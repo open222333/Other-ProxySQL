@@ -12,6 +12,7 @@
     - [教學相關](#教學相關)
     - [腳本相關](#腳本相關)
 - [常用查詢](#常用查詢)
+  - [路由相關](#路由相關)
   - [查看監控](#查看監控)
 - [測試意外宕機，故障轉移 (MGR)](#測試意外宕機故障轉移-mgr)
   - [恢復](#恢復)
@@ -67,17 +68,19 @@ SELECT * FROM stats_mysql_commands_counters;
 SELECT * FROM stats_mysql_connection_pool;
 ```
 
+`與MySQL相關的代理程式級別的全域統計`
+
+```sql
+SELECT * FROM stats_mysql_global;
+```
+
+## 路由相關
+
 `查看路由規則表`
 
 ```sql
 SELECT rule_id,active,match_pattern,destination_hostgroup,apply
 FROM mysql_query_rules;
-```
-
-`與MySQL相關的代理程式級別的全域統計`
-
-```sql
-SELECT * FROM stats_mysql_global;
 ```
 
 `統計路由命中次數`
@@ -99,6 +102,35 @@ SHOW tables FROM monitor;
 ```sql
 SELECT hostgroup,schemaname,username,digest_text,count_star FROM stats_mysql_query_digest;
 ```
+
+`從 stats_mysql_query_digest 表中選擇一些關於查詢摘要統計資料的字段，並按 first_seen 降序排列，然後限制結果集的數量為 5 個。`
+
+```sql
+SELECT
+  hostgroup AS hg,
+  count_star,
+  FROM_UNIXTIME(first_seen) AS first_seen_time,
+  sum_time,
+  digest,
+  digest_text
+FROM
+  stats_mysql_query_digest
+ORDER BY
+  first_seen DESC
+LIMIT 5;
+```
+
+hostgroup：查詢所屬的主機群組。
+
+count_star：查詢執行的次數。
+
+FROM_UNIXTIME(first_seen)：查詢首次執行的時間，已轉換為日期時間格式。
+
+sum_time：查詢總共執行的時間（單位可能是微秒）。
+
+digest：查詢摘要的雜湊值。
+
+digest_text：查詢語句的文字形式。
 
 ## 查看監控
 
