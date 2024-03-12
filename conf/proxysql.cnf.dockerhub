@@ -1,4 +1,6 @@
 datadir="/var/lib/proxysql"
+logfile="/var/log/proxysql.log"
+pidfile="/var/run/proxysql/proxysql.pid"
 
 admin_variables=
 {
