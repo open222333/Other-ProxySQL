@@ -106,9 +106,37 @@ ProxySQL 新增路由
 
 ```sql
 INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
-VALUES (1, 1, '^SELECT', 2, 1);
+VALUES (1, 1, '^INSERT', 1, 1);
 INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
-VALUES (2, 1, '.*', 1, 1);
+VALUES (2, 1, '^UPDATE', 1, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (3, 1, '^SELECT.*FOR UPDATE$', 1, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (4, 1, '^SELECT', 2, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (5, 1, '.*', 1, 1);
+LOAD MYSQL QUERY RULES TO RUNTIME;
+SAVE MYSQL QUERY RULES TO DISK;
+```
+
+ProxySQL 新增 Host Groups
+
+```sql
+INSERT INTO mysql_replication_hostgroups (writer_hostgroup, reader_hostgroup)
+VALUES (1, 2);
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
+```
+
+ProxySQL 新增 MySQL 伺服器節點
+
+```sql
+INSERT INTO mysql_servers (hostgroup_id, hostname, port)
+VALUES (1, 'master', 3306);
+INSERT INTO mysql_servers (hostgroup_id, hostname, port)
+VALUES (2, 'slave1', 3306);
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
 ```
 
 # 常用查詢
