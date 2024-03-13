@@ -1,7 +1,7 @@
 # Other-ProxySQL
 
 ```
-我的專案樣本
+主從高可用
 ```
 
 ## 目錄
@@ -11,6 +11,8 @@
   - [參考資料](#參考資料)
     - [教學相關](#教學相關)
     - [腳本相關](#腳本相關)
+- [基本操作](#基本操作)
+  - [透過 ProxySQL 連接到已設定的 MySQL 伺服器](#透過-proxysql-連接到已設定的-mysql-伺服器)
 - [常用查詢](#常用查詢)
   - [路由相關](#路由相關)
   - [查看監控](#查看監控)
@@ -32,9 +34,82 @@
 
 ### 腳本相關
 
+
 [ZzzCrazyPig/proxysql_groupreplication_checker - 設定proxysql故障轉移 腳本](https://github.com/ZzzCrazyPig/proxysql_groupreplication_checker)
 
 [ZzzCrazyPig/proxysql_groupreplication_checker - 設定proxysql故障轉移 腳本說明](https://github.com/ZzzCrazyPig/proxysql_groupreplication_checker/blob/master/README_Chinese.md)
+
+# 基本操作
+
+## 透過 ProxySQL 連接到已設定的 MySQL 伺服器
+
+ProxySQL 的管理端口（6032）
+
+ProxySQL 的 MySQL 連接端口（通常是 6033）
+
+--prompt 定制提示符的外觀和格式
+
+```bash
+mysql -uyour_username -pyour_password -h127.0.0.1 -P6032 --prompt='ProxySQL> '
+```
+
+```bash
+mysql -uyour_username -pyour_password -h127.0.0.1 -P6033 --prompt='MySQL> '
+```
+
+MySQL master cnf
+
+```ini
+server-id = 1
+log-bin = mysql-master-bin
+```
+
+MySQL slave cnf
+
+```ini
+[mysqld]
+server-id = 2
+log-bin = mysql-slave1-bin
+```
+
+MySQL 新增使用者
+
+```sql
+CREATE USER 'monitor'@'%' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON *.* TO 'monitor'@'%';
+CREATE USER 'proxysql'@'%' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON *.* TO 'proxysql'@'%';
+CREATE USER 'replication'@'%' IDENTIFIED BY 'password';
+GRANT REPLICATION SLAVE ON *.* TO 'replication'@'%';
+FLUSH PRIVILEGES;
+```
+
+ProxySQL 新增使用者
+
+```sql
+INSERT INTO mysql_users (username, password, active, default_hostgroup)
+VALUES ('proxysql', 'password', 1, 1);
+LOAD MYSQL USERS TO RUNTIME;
+SAVE MYSQL USERS TO DISK;
+```
+
+ProxySQL 設置監控 MySQL 後端節點
+
+```sql
+SET mysql-monitor_username='monitor';
+SET mysql-monitor_password='password';
+LOAD MYSQL VARIABLES TO RUNTIME;
+SAVE MYSQL VARIABLES TO DISK;
+```
+
+ProxySQL 新增路由
+
+```sql
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (1, 1, '^SELECT', 2, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (2, 1, '.*', 1, 1);
+```
 
 # 常用查詢
 
