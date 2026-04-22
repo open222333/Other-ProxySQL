@@ -1,9 +1,10 @@
 datadir="/var/lib/proxysql"
-logfile="/var/log/proxysql.log"
+logfile="/logs/proxysql/proxysql.log"
 pidfile="/var/run/proxysql/proxysql.pid"
 
 admin_variables= {
-		admin_credentials="admin:admin;radmin:radmin"
+		# 請修改為強密碼，格式: user:password;user2:password2
+		admin_credentials="admin:CHANGE_ME;radmin:CHANGE_ME2"
 		mysql_ifaces="0.0.0.0:6032"
 		refresh_interval=2000
 		web_enabled=true
@@ -24,7 +25,7 @@ mysql_groups = (
 mysql_variables = (
 	{
 		variable_name="admin_variables.admin_credentials"
-		variable_value="admin:adminadmin"
+		variable_value="admin:CHANGE_ME"
 	}
 )
 

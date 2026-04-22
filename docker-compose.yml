@@ -17,8 +17,6 @@ services:
       - "6032:6032"
       - "6033:6033"
       - "6080:6080"
-    environment:
-      - MYSQL_ROOT_PASSWORD=adminadmin
     restart: always
     networks:
       - mysql_network
@@ -31,7 +29,10 @@ services:
       - "8080:8080"
     volumes:
       - ./data/proxysql:/data
-    command: ["sqlite_web", "/data/proxysql.db", "--host", "0.0.0.0"]
+    command: ["sqlite_web", "/data/proxysql.db", "--host", "0.0.0.0", "--password", "${SQLITE_WEB_PASSWORD}"]
+    restart: always
+    networks:
+      - mysql_network
 
 networks:
   mysql_network:

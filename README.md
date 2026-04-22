@@ -22,10 +22,12 @@ ProxySQL + MySQL 主從高可用練習環境
   - [故障轉移流程 (MGR)](#故障轉移流程-mgr)
   - [節點恢復流程 (MGR)](#節點恢復流程-mgr)
 - [使用方法](#使用方法)
+  - [環境準備](#環境準備)
   - [啟動環境](#啟動環境)
   - [連接 ProxySQL](#連接-proxysql)
   - [初始化 ProxySQL 設定](#初始化-proxysql-設定)
   - [MySQL 主從設定](#mysql-主從設定)
+  - [負載平衡設定](#負載平衡設定)
   - [gr_sw_mode_checker.sh 故障轉移腳本](#gr_sw_mode_checkersh-故障轉移腳本)
 - [常用查詢](#常用查詢)
   - [伺服器與使用者](#伺服器與使用者)
@@ -109,14 +111,15 @@ ProxySQL (6033)          ← 應用程式連接埠（讀寫分離代理）
 
 ### proxysql.cnf
 
-從 `conf/proxysql.cnf.default` 複製為 `conf/proxysql.cnf`：
+從 `conf/proxysql.cnf.default` 複製為 `conf/proxysql.cnf`，並將 `CHANGE_ME` 取代為實際密碼：
 
 ```ini
 datadir="/var/lib/proxysql"
-logfile="/var/log/proxysql.log"
+logfile="/logs/proxysql/proxysql.log"
 
 admin_variables= {
-    admin_credentials="admin:admin;radmin:radmin"
+    # 格式: user:password;user2:password2，請修改為強密碼
+    admin_credentials="admin:CHANGE_ME;radmin:CHANGE_ME2"
     mysql_ifaces="0.0.0.0:6032"
     web_enabled=true
     web_port=6080
@@ -276,6 +279,31 @@ SAVE MYSQL SERVERS TO DISK
 
 ## 使用方法
 
+### 環境準備
+
+**1. 建立 Docker 網路（首次使用）：**
+
+```bash
+docker network create mysql_network
+```
+
+**2. 建立環境變數檔：**
+
+```bash
+cp .env.example .env
+# 編輯 .env，將所有 changeme 取代為實際密碼
+```
+
+**3. 建立 ProxySQL 設定檔：**
+
+```bash
+cp conf/proxysql.cnf.default conf/proxysql.cnf
+# 編輯 conf/proxysql.cnf，將 CHANGE_ME 取代為實際密碼
+# 並將 mysql_server1_ip / mysql_server2_ip 改為實際 MySQL 節點位址
+```
+
+---
+
 ### 啟動環境
 
 ```bash
@@ -290,11 +318,16 @@ docker compose up -d
 docker compose down
 ```
 
+> **SQLite Web（8080）** 已啟用密碼保護，密碼為 `.env` 中 `SQLITE_WEB_PASSWORD` 的值。
+
+---
+
 ### 連接 ProxySQL
 
 ```bash
 # 連接 ProxySQL 管理介面（Admin）
-mysql -uadmin -padmin -h127.0.0.1 -P6032 --prompt='ProxySQL> '
+# 密碼為 conf/proxysql.cnf 中 admin_credentials 設定的值
+mysql -uadmin -p -h127.0.0.1 -P6032 --prompt='ProxySQL> '
 
 # 透過 ProxySQL 代理連接 MySQL（應用程式用）
 mysql -uyour_username -pyour_password -h127.0.0.1 -P6033 --prompt='MySQL> '
@@ -392,6 +425,75 @@ START SLAVE;
 SHOW SLAVE STATUS\G
 ```
 
+### 負載平衡設定
+
+ProxySQL 對同一 Hostgroup 內的多台節點依 `weight` 比例分配流量，可直接在 Reader Hostgroup 新增多台 Slave。
+
+**新增多台 Slave 至 Reader Hostgroup：**
+
+```sql
+-- 連接 ProxySQL Admin（6032）後執行
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight, max_connections)
+VALUES (2, 'slave1', 3306, 100, 200);
+
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight, max_connections)
+VALUES (2, 'slave2', 3306, 100, 200);
+
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight, max_connections)
+VALUES (2, 'slave3', 3306, 200, 200);
+-- slave3 的 weight 為 200，流量為 slave1/slave2 的兩倍
+
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
+```
+
+**調整負載平衡演算法：**
+
+```sql
+-- 查看目前演算法（0=RANDOM 依 weight 隨機，1=LEAST_CONNECTIONS 優先送往連線數最少的節點）
+SELECT * FROM global_variables WHERE variable_name = 'mysql-default_query_routing_algorithm';
+
+-- 改為 LEAST_CONNECTIONS
+SET mysql-default_query_routing_algorithm = 1;
+LOAD MYSQL VARIABLES TO RUNTIME;
+SAVE MYSQL VARIABLES TO DISK;
+```
+
+**暫時下線單台節點（維護用）：**
+
+```sql
+-- 將 slave2 設為 OFFLINE_SOFT（等現有連線結束後不再分配新連線）
+UPDATE mysql_servers SET status='OFFLINE_SOFT' WHERE hostname='slave2';
+LOAD MYSQL SERVERS TO RUNTIME;
+
+-- 維護完畢後恢復
+UPDATE mysql_servers SET status='ONLINE' WHERE hostname='slave2';
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
+```
+
+**驗證負載平衡是否生效：**
+
+```sql
+-- 1. 確認節點狀態（ConnUsed=目前連線數，Queries=已處理請求數）
+SELECT hostgroup, srv_host, srv_port, status, weight, ConnUsed, Queries
+FROM stats_mysql_connection_pool
+WHERE hostgroup = 2;
+
+-- 2. 查看各節點的流量分佈
+SELECT hostgroup, srv_host, count_star, sum_time
+FROM stats_mysql_query_digest_reset
+GROUP BY hostgroup, srv_host;
+
+-- 3. 實際測試：對 6033 執行多次 SELECT，觀察 server_id 是否輪替
+-- （在應用程式或 mysql client 執行）
+SELECT @@hostname, @@server_id;
+```
+
+> `Queries` 欄位統計各節點累計處理的請求數，若分配均勻則各節點數量應接近 weight 比例。
+
+---
+
 ### gr_sw_mode_checker.sh 故障轉移腳本
 
 用於 MGR 模式，持續監控節點健康並自動調整 ProxySQL 路由。
@@ -411,7 +513,7 @@ SHOW SLAVE STATUS\G
 | `write_can_read` | Writer 是否也可讀（1=是，0=否） | 1 |
 | `log_file` | 日誌檔案路徑 | `./checker.log` |
 
-> 腳本預設連接 ProxySQL `admin:admin@127.0.0.1:6032`，如有修改請編輯腳本內的變數。
+> 腳本預設連接 `127.0.0.1:6032`，帳密為腳本內 `proxysql_username` / `proxysql_password` 變數，修改 ProxySQL 管理密碼後需同步更新腳本。
 
 ---
 
@@ -520,9 +622,10 @@ SELECT * FROM mysql_servers;
 
 ### 環境設定
 
-- 啟動前請先複製 `conf/proxysql.cnf.default` → `conf/proxysql.cnf`，並填入實際的 MySQL 節點 IP 或容器名稱
-- `docker-compose.yml` 使用外部網路 `mysql_network`，需確認網路已建立或配合 `mysql_replication/` 的 compose 一起啟動
-- ProxySQL 預設管理帳號為 `admin:admin`，正式環境請務必修改
+- 啟動前依序執行：`docker network create mysql_network` → 複製 `.env.example` → 複製 `conf/proxysql.cnf.default`，填入實際密碼與 MySQL 節點位址
+- `.env` 與 `conf/proxysql.cnf` 已加入 `.gitignore`，不會被提交至版本控制
+- `docker-compose.yml` 使用外部網路 `mysql_network`，需先手動建立，否則 compose 會失敗
+- **所有 `CHANGE_ME` 佔位符必須替換為強密碼後才能啟動**
 
 ### Master-Slave 模式
 
@@ -545,9 +648,11 @@ SELECT * FROM mysql_servers;
 
 ### 安全性
 
+- 密碼管理：複製 `.env.example` → `.env`，在 `.env` 中設定所有密碼；`conf/proxysql.cnf` 中的密碼亦需一併修改，兩者需保持一致
 - `monitor` 使用者的帳密明文儲存於 ProxySQL 設定中，正式環境請限制其權限（最小化原則）
-- `proxysql.cnf` 包含管理帳密，不應提交至版本控制（確認已加入 `.gitignore`）
-- 正式環境不應對外暴露 6032（Admin）埠號
+- `proxysql.cnf` 與 `.env` 已加入 `.gitignore`，確保不會提交至版本控制
+- 正式環境不應對外暴露 6032（Admin）埠號，建議改綁內網 IP 並透過防火牆限制來源
+- SQLite Web（8080）已啟用密碼保護，正式環境仍建議限制存取來源或關閉此服務
 
 ---
 
