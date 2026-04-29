@@ -6,10 +6,10 @@ ProxySQL + MySQL 主從高可用練習環境
 
 ## MySQL 版本分支
 
-| 分支 | ProxySQL 版本 | 支援 MySQL | 說明 |
-|------|--------------|-----------|------|
-| [feat/mysql80-support](https://github.com/open222333/Other-ProxySQL/tree/feat/mysql80-support) | 2.5.5 | **8.0.x** | 需用 `mysql_native_password` 建立帳號 |
-| [feat/mysql84-support](https://github.com/open222333/Other-ProxySQL/tree/feat/mysql84-support) | 2.7.1 | **8.4.x** | 原生支援 `caching_sha2_password`，直接建立帳號即可 |
+| 分支 | ProxySQL 版本 | 支援 MySQL 範圍 | 說明 |
+|------|--------------|----------------|------|
+| [feat/mysql80-support](https://github.com/open222333/Other-ProxySQL/tree/feat/mysql80-support) | 2.5.5 | **5.7 ～ 8.0** | 需用 `mysql_native_password` 建立帳號（8.4 已移除此插件） |
+| [feat/mysql84-support](https://github.com/open222333/Other-ProxySQL/tree/feat/mysql84-support) | 2.7.1 | **8.0 ～ 8.4** | 原生支援 `caching_sha2_password`，直接建立帳號即可 |
 
 ---
 
