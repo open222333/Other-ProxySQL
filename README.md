@@ -562,7 +562,7 @@ ProxySQL 主機（Docker 容器）
 | `logfile` | `/logs/proxysql/proxysql.log` | `/var/log/proxysql.log` | 模板掛 volume，實際部署改用容器內路徑 |
 | `admin_credentials` | `admin:CHANGE_ME;radmin:CHANGE_ME` | 實際密碼 | 必須替換強密碼 |
 | `monitor_password` | `CHANGE_ME` | 實際密碼 | 必須替換強密碼 |
-| `server_version` | `5.5.30` | 對應 MySQL 版本號 | MySQL 8 建議改為 `8.0.x` |
+| `server_version` | `5.5.30` | `8.4.0` | 需與後端 MySQL 版本對齊 |
 
 #### docker-compose.yml
 
@@ -605,18 +605,18 @@ GRANT REPLICATION SLAVE ON *.* TO 'replication'@'%';
 FLUSH PRIVILEGES;
 ```
 
-**MySQL 8（必須指定 `mysql_native_password`）：**
+**MySQL 8.4：**
 
 ```sql
--- MySQL 8 預設認證插件為 caching_sha2_password，ProxySQL 不支援
--- 建立帳號時必須指定 mysql_native_password，否則監控與連線會失敗
-CREATE USER 'monitor'@'%' IDENTIFIED WITH mysql_native_password BY '<MYSQL_MONITOR_PASSWORD>';
+-- MySQL 8.4 已完全移除 mysql_native_password，直接使用預設的 caching_sha2_password
+-- ProxySQL 2.7.x 起原生支援 caching_sha2_password，無需特別指定插件
+CREATE USER 'monitor'@'%' IDENTIFIED BY '<MYSQL_MONITOR_PASSWORD>';
 GRANT ALL PRIVILEGES ON *.* TO 'monitor'@'%';
 
-CREATE USER 'proxysql'@'%' IDENTIFIED WITH mysql_native_password BY '<MYSQL_PROXYSQL_PASSWORD>';
+CREATE USER 'proxysql'@'%' IDENTIFIED BY '<MYSQL_PROXYSQL_PASSWORD>';
 GRANT ALL PRIVILEGES ON *.* TO 'proxysql'@'%';
 
-CREATE USER 'replication'@'%' IDENTIFIED WITH mysql_native_password BY '<MYSQL_REPLICATION_PASSWORD>';
+CREATE USER 'replication'@'%' IDENTIFIED BY '<MYSQL_REPLICATION_PASSWORD>';
 GRANT REPLICATION SLAVE ON *.* TO 'replication'@'%';
 
 FLUSH PRIVILEGES;
@@ -709,7 +709,7 @@ mysql_variables=
 {
     threads=4
     max_connections=2048
-    server_version="8.0.36"
+    server_version="8.4.0"
     monitor_username="monitor"
     monitor_password="<MONITOR_PASSWORD>"
     ...
@@ -1011,7 +1011,7 @@ SELECT * FROM mysql_servers;
 - `SHOW SLAVE STATUS\G`（MySQL 5.7）或 `SHOW REPLICA STATUS\G`（MySQL 8）中 `Seconds_Behind_Master` / `Seconds_Behind_Source` 為複製延遲，若持續增大需排查原因
 - Slave 建議設定 `read_only = ON`（或 `super_read_only = ON`），防止誤寫入 Slave 導致主從不一致
 - 主從模式**無自動故障轉移**，Master 宕機需手動將 Slave 提升為新 Master 並更新 ProxySQL 設定
-- **MySQL 8 認證插件**：MySQL 8 預設使用 `caching_sha2_password`，ProxySQL 目前不支援此插件。建立 `monitor`、`proxysql`、`replication` 等帳號時必須指定 `IDENTIFIED WITH mysql_native_password`，否則 ProxySQL 監控與連線會出現 `Authentication plugin 'caching_sha2_password' cannot be loaded` 錯誤
+- **MySQL 8.4 認證插件**：MySQL 8.4 已完全移除 `mysql_native_password` 插件（8.0 廢棄、8.4 移除），不可再使用 `IDENTIFIED WITH mysql_native_password`。ProxySQL 2.7.x 起原生支援 `caching_sha2_password`，建立帳號時直接使用 `IDENTIFIED BY '...'` 即可，無需指定插件
 - **MySQL 8 語法變更**：MySQL 8.0.23+ 已廢棄 `CHANGE MASTER TO` / `START SLAVE` / `SHOW SLAVE STATUS`，改用 `CHANGE REPLICATION SOURCE TO` / `START REPLICA` / `SHOW REPLICA STATUS`
 - 路由規則中 `^SELECT.*FOR UPDATE$` 必須排在 `^SELECT` 之前（rule_id 較小），否則排他鎖查詢會被誤導至 Slave，造成鎖等待或資料不一致
 
