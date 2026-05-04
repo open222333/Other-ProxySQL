@@ -357,9 +357,11 @@ docker compose down
 > `radmin` 即 "remote admin"。ProxySQL 強制第一組帳號只能走 socket，即使 6032 port 被外部掃到，`admin` 也無法被 TCP 登入，是安全設計。
 
 ```bash
-# 連接 ProxySQL 管理介面（Admin）—— TCP 連線使用 radmin
-# 密碼為 conf/proxysql.cnf 中 admin_credentials 第二組的值
+# TCP 連線（從主機）：使用 radmin
 mysql -uradmin -p -h127.0.0.1 -P6032 --prompt='ProxySQL> '
+
+# 容器內連線：docker exec 進入容器後用 admin（走 socket）
+docker exec -it proxysql mysql -uadmin -p -hlocalhost -P6032 --prompt='ProxySQL> '
 
 # 透過 ProxySQL 代理連接 MySQL（應用程式用）
 mysql -uyour_username -pyour_password -h127.0.0.1 -P6033 --prompt='MySQL> '
