@@ -46,12 +46,15 @@ ProxySQL + MySQL 主從高可用練習環境
   - [Step 5：啟動 ProxySQL](#step-5啟動-proxysql)
   - [Step 6：設定後端節點與路由](#step-6設定後端節點與路由)
   - [Step 7：驗證](#step-7驗證)
+- [ProxySQL 雙機部署方案](#proxysql-雙機部署方案)
+  - [方案三：avnight 雙機熱備（模板部署，相同讀寫分離設定）](#方案三avnight-雙機熱備模板部署相同讀寫分離設定)
 - [常用查詢](#常用查詢)
   - [伺服器與使用者](#伺服器與使用者)
   - [路由相關](#路由相關)
   - [監控相關](#監控相關)
   - [MGR 群組狀態](#mgr-群組狀態)
 - [建議注意事項](#建議注意事項)
+  - [Admin 連線常見錯誤](#admin-連線常見錯誤)
 - [參考資料](#參考資料)
 
 ---
@@ -341,10 +344,22 @@ docker compose down
 
 ### 連接 ProxySQL
 
+> **admin vs radmin**
+>
+> `admin_credentials` 設定兩組帳號，權限相同，差別只在允許的連線方式：
+>
+> | | `admin` | `radmin` |
+> |--|--|--|
+> | 連線方式 | Unix socket 限定（本地） | TCP 允許（`-h127.0.0.1` 或遠端 IP） |
+> | 管理權限 | 完整 | 完整 |
+> | 適用場景 | 容器內緊急操作、本機腳本 | 日常遠端管理、Keepalived 健康檢查 |
+>
+> `radmin` 即 "remote admin"。ProxySQL 強制第一組帳號只能走 socket，即使 6032 port 被外部掃到，`admin` 也無法被 TCP 登入，是安全設計。
+
 ```bash
-# 連接 ProxySQL 管理介面（Admin）
-# 密碼為 conf/proxysql.cnf 中 admin_credentials 設定的值
-mysql -uadmin -p -h127.0.0.1 -P6032 --prompt='ProxySQL> '
+# 連接 ProxySQL 管理介面（Admin）—— TCP 連線使用 radmin
+# 密碼為 conf/proxysql.cnf 中 admin_credentials 第二組的值
+mysql -uradmin -p -h127.0.0.1 -P6032 --prompt='ProxySQL> '
 
 # 透過 ProxySQL 代理連接 MySQL（應用程式用）
 mysql -uyour_username -pyour_password -h127.0.0.1 -P6033 --prompt='MySQL> '
@@ -792,7 +807,7 @@ docker-compose ps
 連入 ProxySQL Admin：
 
 ```bash
-mysql -uadmin -p<ADMIN_PASSWORD> -h127.0.0.1 -P6032 --prompt='ProxySQL> '
+mysql -uradmin -p<PROXYSQL_RADMIN_PASSWORD> -h127.0.0.1 -P6032 --prompt='ProxySQL> '
 ```
 
 建立 Hostgroup 主從對應：
@@ -1002,6 +1017,232 @@ SELECT * FROM mysql_servers;
 
 ---
 
+# ProxySQL 雙機部署方案
+
+## 方案三：avnight 雙機熱備（模板部署，相同讀寫分離設定）
+
+### 架構說明
+
+> **虛擬 IP 對照表**（以下 SQL 範例皆使用此對應，部署時替換為實際 IP）
+>
+> | 虛擬 IP | 角色 | 說明 |
+> |---------|------|------|
+> | `10.0.0.10` | MySQL Master | 主節點，處理所有寫入；同時加入 HG2 分擔讀取（weight=5） |
+> | `10.0.0.20` | MySQL Slave  | 從節點，僅處理讀取（weight=3） |
+
+```
+Application
+    │
+    ├──► ProxySQL（proxysql_avnight_master）  ←── 主入口
+    │        │  讀寫分離路由（5 條規則）
+    │        ├─── INSERT / UPDATE / DDL / SELECT FOR UPDATE → HG1（MySQL Master）
+    │        └─── SELECT → HG2（MySQL Master weight=5 + MySQL Slave weight=3）
+    │
+    └──► ProxySQL（proxysql_avnight_slave）   ←── 備援入口（設定相同）
+             │  讀寫分離路由（5 條規則）
+             ├─── INSERT / UPDATE / DDL / SELECT FOR UPDATE → HG1（MySQL Master）
+             └─── SELECT → HG2（MySQL Master weight=5 + MySQL Slave weight=3）
+                      │
+           ┌──────────┴──────────┐
+           ▼                     ▼
+  MySQL Master                MySQL Slave
+  10.0.0.10:3306              10.0.0.20:3306
+  （HG1 寫入 + HG2 weight=5）  （HG2 weight=3）
+```
+
+- 兩台 ProxySQL 設定**完全相同**（路由規則、Hostgroup、帳號）
+- 路由與 Hostgroup 設計參照 `proxysql_avnight_master` / `proxysql_avnight_slave` 的實際設定
+- 部署方式依照 `proxysql` 模板（`.env`、`CHANGE_ME`、docker-compose）
+- 無 Keepalived / VIP，切換靠應用層或 DNS 手動切換
+- 讀流量依 weight 分配：master 62.5%（weight=5）、slave 37.5%（weight=3）
+
+### 節點配置（Hostgroup 設計）
+
+| Hostgroup | 用途 | 成員 | Weight |
+|-----------|------|------|--------|
+| HG 1（寫入） | INSERT / UPDATE / DDL / 排他鎖 SELECT | MySQL Master（`10.0.0.10`） | 1 |
+| HG 2（讀取） | SELECT（一般查詢） | MySQL Master（`10.0.0.10`） | 5 |
+| HG 2（讀取） | SELECT（一般查詢） | MySQL Slave（`10.0.0.20`） | 3 |
+
+> 讀流量分配：master weight=5、slave weight=3，讀請求約 62.5% 導向 master、37.5% 導向 slave。
+> 適合 slave 規格較低或複製延遲較大的場景，讓 master 承擔較多讀取。
+
+### 部署步驟（兩台主機執行相同步驟）
+
+#### Step 1：Clone 並初始化設定檔
+
+```bash
+git clone https://bitbucket.org/avnight/proxysql.git proxysql_avnight_master
+cd proxysql_avnight_master
+
+cp .env.example .env
+cp conf/proxysql.cnf.default conf/proxysql.cnf
+cp conf/phpmyadmin/config.user.inc.php.default conf/phpmyadmin/config.user.inc.php
+cp docker-compose.yml.default docker-compose.yml
+mkdir -p logs/proxysql
+```
+
+#### Step 2：編輯 .env
+
+將所有 `CHANGE_ME` 替換為強密碼：
+
+```ini
+PROXYSQL_ADMIN_USER=admin
+PROXYSQL_ADMIN_PASSWORD=<強密碼>
+PROXYSQL_RADMIN_PASSWORD=<強密碼>
+
+MYSQL_ROOT_PASSWORD=<強密碼>
+MYSQL_MONITOR_USER=monitor
+MYSQL_MONITOR_PASSWORD=<強密碼>
+MYSQL_PROXYSQL_USER=proxysql
+MYSQL_PROXYSQL_PASSWORD=<強密碼>
+MYSQL_REPLICATION_USER=replicator
+MYSQL_REPLICATION_PASSWORD=<強密碼>
+
+SQLITE_WEB_PASSWORD=<強密碼>
+```
+
+#### Step 3：調整 conf/proxysql.cnf
+
+依「模板 vs 實際部署差異」修改：
+
+```
+datadir="/var/lib/proxysql"
+logfile="/var/log/proxysql.log"
+pidfile="/var/run/proxysql/proxysql.pid"
+
+admin_variables=
+{
+    admin_credentials="admin:<PROXYSQL_ADMIN_PASSWORD>;radmin:<PROXYSQL_RADMIN_PASSWORD>"
+    mysql_ifaces="0.0.0.0:6032"
+    web_enabled=true
+    web_port=6080
+}
+
+mysql_variables=
+{
+    ...
+    server_version="8.4.0"
+    monitor_username="monitor"
+    monitor_password="<MYSQL_MONITOR_PASSWORD>"
+    ...
+}
+```
+
+> `logfile` 改為 `/var/log/proxysql.log`（容器內路徑），`server_version` 確認為 `8.4.0`。
+
+#### Step 4：調整 docker-compose.yml
+
+依「模板 vs 實際部署差異」修改（phpmyadmin port 改 `8081:80`）：
+
+```yaml
+  phpmyadmin:
+    ports:
+      - "8081:80"
+```
+
+#### Step 5：調整 conf/phpmyadmin/config.user.inc.php
+
+```php
+<?php
+$cfg['Servers'][1]['host'] = 'proxysql';
+$cfg['Servers'][1]['port'] = '6033';
+$cfg['Servers'][1]['verbose'] = 'proxysql';
+$cfg['DefaultServer'] = 1;
+?>
+```
+
+#### Step 6：啟動容器
+
+```bash
+docker-compose up -d
+docker-compose ps
+```
+
+#### Step 7：連入 ProxySQL 設定後端（兩台執行相同 SQL）
+
+```bash
+mysql -uradmin -p<PROXYSQL_RADMIN_PASSWORD> -h127.0.0.1 -P6032 --prompt='ProxySQL> '
+```
+
+```sql
+-- Hostgroup 主從對應
+INSERT INTO mysql_replication_hostgroups (writer_hostgroup, reader_hostgroup, check_type)
+VALUES (1, 2, 'read_only');
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
+
+-- HG1：寫入，僅 master（10.0.0.10 = MySQL Master）
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight, max_connections)
+VALUES (1, '10.0.0.10', 3306, 1, 10000);
+
+-- HG2：讀取，master 高權重（62.5%）+ slave 低權重（37.5%）
+-- 10.0.0.10 = MySQL Master，10.0.0.20 = MySQL Slave
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight, max_connections)
+VALUES (2, '10.0.0.10', 3306, 5, 10000);
+INSERT INTO mysql_servers (hostgroup_id, hostname, port, weight, max_connections)
+VALUES (2, '10.0.0.20', 3306, 3, 10000);
+LOAD MYSQL SERVERS TO RUNTIME;
+SAVE MYSQL SERVERS TO DISK;
+
+-- 監控帳號
+SET mysql-monitor_username='monitor';
+SET mysql-monitor_password='<MYSQL_MONITOR_PASSWORD>';
+LOAD MYSQL VARIABLES TO RUNTIME;
+SAVE MYSQL VARIABLES TO DISK;
+
+-- 應用連線帳號
+INSERT INTO mysql_users (username, password, active, default_hostgroup)
+VALUES ('proxysql', '<MYSQL_PROXYSQL_PASSWORD>', 1, 1);
+LOAD MYSQL USERS TO RUNTIME;
+SAVE MYSQL USERS TO DISK;
+
+-- 讀寫分離路由規則（rule_id 3 必須在 rule_id 4 之前）
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (1, 1, '^INSERT', 1, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (2, 1, '^UPDATE', 1, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (3, 1, '^SELECT.*FOR UPDATE$', 1, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (4, 1, '^SELECT', 2, 1);
+INSERT INTO mysql_query_rules (rule_id, active, match_pattern, destination_hostgroup, apply)
+VALUES (5, 1, '.*', 1, 1);
+LOAD MYSQL QUERY RULES TO RUNTIME;
+SAVE MYSQL QUERY RULES TO DISK;
+```
+
+#### Step 8：驗證
+
+```sql
+-- 確認後端節點狀態（ONLINE 表示正常）
+SELECT hostgroup_id, hostname, port, status, weight FROM mysql_servers;
+
+-- 確認監控連線正常
+SELECT * FROM monitor.mysql_server_connect_log ORDER BY time_start_us DESC LIMIT 10;
+SELECT * FROM monitor.mysql_server_ping_log ORDER BY time_start_us DESC LIMIT 10;
+
+-- 確認路由規則
+SELECT rule_id, active, match_pattern, destination_hostgroup, apply
+FROM mysql_query_rules ORDER BY rule_id;
+```
+
+測試讀寫分離（透過 ProxySQL 6033 連線）：
+
+```bash
+mysql -uproxysql -p<MYSQL_PROXYSQL_PASSWORD> -h127.0.0.1 -P6033 --prompt='MySQL> '
+```
+
+```sql
+-- 執行若干 SELECT 和 INSERT 後確認路由分佈
+SELECT hostgroup, digest_text, count_star
+FROM stats_mysql_query_digest
+ORDER BY count_star DESC LIMIT 10;
+-- hostgroup=1 為寫入流量，hostgroup=2 為讀取流量
+```
+
+---
+
 ## 建議注意事項
 
 ### 環境設定
@@ -1033,6 +1274,47 @@ SELECT * FROM mysql_servers;
 - 所有設定變更需執行 `LOAD ... TO RUNTIME` 才會立即生效，執行 `SAVE ... TO DISK` 才能在重啟後持續有效，兩者需配合使用
 - 修改設定後建議透過 `stats_mysql_connection_pool` 確認後端節點連線狀態正常
 - SQLite Web（8080）提供 ProxySQL 資料庫的圖形化瀏覽，僅用於檢視，不建議直接修改
+
+### Admin 連線常見錯誤
+
+#### `User 'admin' can only connect locally`
+
+`admin` 帳號限定 Unix socket，不允許 TCP 連線（`-h127.0.0.1`）。改用 `radmin` 帳號：
+
+```bash
+mysql -uradmin -p<PROXYSQL_RADMIN_PASSWORD> -h127.0.0.1 -P6032 --prompt='ProxySQL> '
+```
+
+#### `Access denied for user 'radmin'`
+
+帳號正確但密碼錯誤。ProxySQL 啟動後設定存入 SQLite DB，`proxysql.cnf` 的密碼**只在 DB 不存在時**（首次初始化）讀入，DB 存在後修改 cnf 不會生效。
+
+**查詢 DB 中實際生效的密碼：**
+
+```bash
+docker exec -it proxysql sqlite3 /var/lib/proxysql/proxysql.db \
+  "SELECT variable_value FROM global_variables WHERE variable_name='admin-admin_credentials';"
+```
+
+輸出格式：`admin:<admin密碼>;radmin:<radmin密碼>`，用查到的密碼登入即可。
+
+**若要重置密碼（會清空所有設定）：**
+
+```bash
+# 1. 停容器
+docker-compose stop proxysql
+
+# 2. 刪除舊 DB，強制重讀 cnf
+rm ./data/proxysql/proxysql.db
+
+# 3. 確認 cnf 密碼已設定正確
+grep admin_credentials conf/proxysql.cnf
+
+# 4. 重啟（ProxySQL 重新以 cnf 初始化）
+docker-compose start proxysql
+```
+
+> 刪除 DB 後 `mysql_servers`、`mysql_users`、路由規則全部清空，需重新執行 Step 7 設定後端節點。
 
 ### 安全性
 
