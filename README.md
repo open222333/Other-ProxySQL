@@ -54,7 +54,15 @@ ProxySQL + MySQL 主從高可用練習環境
   - [監控相關](#監控相關)
   - [MGR 群組狀態](#mgr-群組狀態)
 - [建議注意事項](#建議注意事項)
+  - [環境設定](#環境設定)
+  - [Master-Slave 模式](#master-slave-模式)
+  - [MGR 模式](#mgr-模式)
+  - [ProxySQL 操作](#proxysql-操作)
   - [Admin 連線常見錯誤](#admin-連線常見錯誤)
+    - [User 'admin' can only connect locally](#user-admin-can-only-connect-locally)
+    - [Access denied for user 'radmin'](#access-denied-for-user-radmin)
+    - [若先啟動後才設定密碼](#若先啟動後才設定密碼)
+  - [安全性](#安全性)
 - [參考資料](#參考資料)
 
 ---
@@ -796,6 +804,15 @@ $cfg['DefaultServer'] = 1;
 
 ### Step 5：啟動 ProxySQL
 
+> **⚠ 啟動前必須先完成密碼設定（Step 4）**
+>
+> ProxySQL **首次啟動**時才讀取 `proxysql.cnf`，並將所有設定（含 admin 密碼）寫入 SQLite DB（`data/proxysql/proxysql.db`）。  
+> DB 一旦建立，之後修改 `proxysql.cnf` 都**不會再生效**。
+>
+> 正確順序：完成 Step 4（`proxysql.cnf` 已填入實際密碼）→ 才執行 `docker-compose up -d`
+>
+> 若已先 `up` 再修改密碼，請見「[Admin 連線常見錯誤 → 若先啟動後才設定密碼](#若先啟動後才設定密碼)」。
+
 ```bash
 docker-compose up -d
 docker-compose ps
@@ -1300,23 +1317,33 @@ docker exec -it proxysql sqlite3 /var/lib/proxysql/proxysql.db \
 
 輸出格式：`admin:<admin密碼>;radmin:<radmin密碼>`，用查到的密碼登入即可。
 
-**若要重置密碼（會清空所有設定）：**
+---
+
+#### 若先啟動後才設定密碼
+
+若在 `conf/proxysql.cnf` 設定好密碼**之前**就執行了 `docker-compose up`，ProxySQL 會以當時的空值或 `CHANGE_ME` 初始化 SQLite DB，之後修改設定檔都不會生效。
+
+**修正步驟（會清空所有設定）：**
 
 ```bash
-# 1. 停容器
+# 1. 先確認 conf/proxysql.cnf 已填入正確密碼
+grep admin_credentials conf/proxysql.cnf
+# 應顯示：admin_credentials="admin:<實際密碼>;radmin:<實際密碼>"
+
+# 2. 停止容器
 docker-compose stop proxysql
 
-# 2. 刪除舊 DB，強制重讀 cnf
+# 3. 刪除舊 DB（強制讓 ProxySQL 重新從 cnf 初始化）
 rm ./data/proxysql/proxysql.db
 
-# 3. 確認 cnf 密碼已設定正確
-grep admin_credentials conf/proxysql.cnf
-
-# 4. 重啟（ProxySQL 重新以 cnf 初始化）
+# 4. 重啟
 docker-compose start proxysql
+
+# 5. 驗證可登入
+mysql -uradmin -p<PROXYSQL_RADMIN_PASSWORD> -h127.0.0.1 -P6032 --prompt='ProxySQL> '
 ```
 
-> 刪除 DB 後 `mysql_servers`、`mysql_users`、路由規則全部清空，需重新執行 Step 7 設定後端節點。
+> **注意**：刪除 DB 後 `mysql_servers`、`mysql_users`、路由規則**全部清空**，需重新執行 Step 6 設定後端節點與路由規則。
 
 ### 安全性
 
